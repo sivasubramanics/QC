@@ -1,14 +1,14 @@
 #!/usr/bin/env python
-import string
-import sys
 
 __author__ = "Sivasubramani S"
 __email__ = "s.sivasubramani@cgiar.org"
 __version__ = "0.0.1"
 
 import argparse
+import sys
 from collections import defaultdict
 
+# CONSTANTS
 NEWLINE = '\n'
 CSV = ','
 TAB = "\t"
@@ -38,12 +38,12 @@ parser.add_argument("--parent-info", dest="parentInfoFile",
 parser.add_argument("--out-HMP", dest="outHmpFile",
                   metavar="<FILENAME>", help="Output Hapmap File")
 
-
+# Parse commandline arguments
 options = parser.parse_args()
 
 def init_bases():
     """
-
+    Initialize a dictionary of 2 letter -> 1 letter IUPAC codes.
     :return:
     """
 
@@ -71,11 +71,26 @@ def init_bases():
     return bases
 
 def die(errorMessage):
+    """
+    Print error message and exit from process. DIRTY METHOD
+    :param errorMessage:
+    :return:
+    """
     print(errorMessage)
     sys.exit()
 
 def writeHMP(outFile, lgcDataMG, markerInfo):
+    """
+    From LGCdata dictionary and Marker Info dictionary create Hapmap file
+    :param outFile: Output Hapmap file name
+    :param lgcDataMG: LGC data dictionary. marker -> Genotype -> AlleleCall
+    :param markerInfo: Marker Info Dictionary. marker -> chr/pos
+    :return:
+    """
+
+    # Opening output file handle
     outFileHandle = open(outFile, 'w')
+    # Build and write the first/header line for Hapmap
     for markerID in sorted(lgcDataMG):
         outFileHandle.write(HMPHEAD)
         for gtID in sorted(lgcDataMG[markerID]):
@@ -83,6 +98,7 @@ def writeHMP(outFile, lgcDataMG, markerInfo):
         outFileHandle.write(NEWLINE)
         break
 
+    # Build and write marker lines for Hapmap
     for markerID in sorted(lgcDataMG):
         outFileHandle.write(markerID + TAB \
                             + "N/N" + TAB \
@@ -100,15 +116,20 @@ def writeHMP(outFile, lgcDataMG, markerInfo):
             outFileHandle.write("\t" + lgcDataMG[markerID][gtID])
         outFileHandle.write(NEWLINE)
 
+# Here we go
 """__main__"""
 
+# Task to be performed
 task = options.task
 
+# Return help message if the task is not provided or given wrong
 if not task in tasks:
     print("Invalid/No Task provided.")
     parser.print_help()
 
+# To convert LGC Grid file to Hapmap file
 if task == "LGC2HMP":
+    # Look for the mandatory options are parsed/provided.
     required = "gridFile snpInfoFile outHmpFile".split(" ")
     for req in required:
         if options.__dict__[req] is None:
@@ -121,6 +142,7 @@ if task == "LGC2HMP":
     outHmpFile = options.outHmpFile
 
     bases = init_bases()
+    # Reading LGC Grid file. Delimiter = Comma
     with open(gridFile) as gridHandle:
         lineNo = 0
         dataFlag = 0
@@ -142,7 +164,7 @@ if task == "LGC2HMP":
                 lgcDataMG[markerIDs[i]][lineEntries[0]] = bases[lineEntries[i].replace(":","")]
                 lgcDataGM[lineEntries[0]][markerIDs[i]] = bases[lineEntries[i].replace(":", "")]
 
-
+    # Reading Snp information file. Delimiter = TAB. rsID<TAB>chr<TAB>pos
     with open(snpInfoFile) as snpInfoHandle:
         markerInfo = defaultdict(dict)
         for line in snpInfoHandle:
@@ -151,6 +173,7 @@ if task == "LGC2HMP":
             markerInfo[lineEntries[0]]['chr'] = lineEntries[1]
             markerInfo[lineEntries[0]]['pos'] = lineEntries[2]
 
+    # Calling the method to write output Hapmap file
     writeHMP(outHmpFile, lgcDataMG, markerInfo)
 
 
