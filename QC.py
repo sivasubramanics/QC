@@ -110,11 +110,43 @@ def writeHMP(outFile, lgcDataMG, markerInfo):
                             + "NA" + TAB \
                             + "NA" + TAB \
                             + "NA" + TAB \
-                            + "NA" + TAB \
+                            + "NA" \
                             )
         for gtID in sorted(lgcDataMG[markerID]):
             outFileHandle.write("\t" + lgcDataMG[markerID][gtID])
+
         outFileHandle.write(NEWLINE)
+
+def getString(lgcDataGM, parent):
+    """
+    Get string from dictionary
+    :param lgcDataGM: dictionary[genotype][marker] = baseCall
+    :param parent: GenotypeName of Parent
+    :return: String of base calls
+    """
+    parentString = ""
+    for marker in sorted(lgcDataGM[parent]):
+        parentString = parentString + lgcDataGM[parent][marker]
+    return parentString
+
+def checkParents(lgcDataMG, parentA, parentB):
+    """
+    Get list of polymorphic markers between the parents based on LGC data
+
+    :param lgcDataMG: dictionary[marker][genotype] = baseCall
+    :param parentA: GenotypeName of Parent A
+    :param parentB: GenotypeName of Parent B
+    :return: List of polymorphic markers
+    """
+    polyMorphicList = []
+    for marker in sorted(lgcDataMG):
+        callA = lgcDataMG[marker][parentA]
+        callB = lgcDataMG[marker][parentB]
+        if IUPAC.__contains__(callA) and IUPAC.__contains__(callB):
+            if  callA != callB :
+                polyMorphicList.append(marker + "[" + callA + "/" + callB + "]")
+    return polyMorphicList
+
 
 # Here we go
 """__main__"""
@@ -128,9 +160,10 @@ if not task in tasks:
     parser.print_help()
 
 # To convert LGC Grid file to Hapmap file
+
 if task == "LGC2HMP":
     # Look for the mandatory options are parsed/provided.
-    required = "gridFile snpInfoFile outHmpFile".split(" ")
+    required = "gridFile snpInfoFile parentInfoFile outHmpFile".split(" ")
     for req in required:
         if options.__dict__[req] is None:
             print("Option/Value Missing for", req)
@@ -139,8 +172,10 @@ if task == "LGC2HMP":
 
     gridFile = options.gridFile
     snpInfoFile = options.snpInfoFile
+    parentInfoFile = options.parentInfoFile
     outHmpFile = options.outHmpFile
 
+    # Initialize 2 letter nucleotide dictionary
     bases = init_bases()
     # Reading LGC Grid file. Delimiter = Comma
     with open(gridFile) as gridHandle:
@@ -161,9 +196,12 @@ if task == "LGC2HMP":
             if lineEntries[0] == "NTC":
                 continue
             for i in range(1, len(lineEntries)):
-                lgcDataMG[markerIDs[i]][lineEntries[0]] = bases[lineEntries[i].replace(":","")]
-                lgcDataGM[lineEntries[0]][markerIDs[i]] = bases[lineEntries[i].replace(":", "")]
-
+                if not lineEntries[i] == "" :
+                    lgcDataMG[markerIDs[i]][lineEntries[0]] = bases[lineEntries[i].replace(":","")]
+                    lgcDataGM[lineEntries[0]][markerIDs[i]] = bases[lineEntries[i].replace(":", "")]
+                else :
+                    lgcDataMG[markerIDs[i]][lineEntries[0]] = bases['NN']
+                    lgcDataGM[lineEntries[0]][markerIDs[i]] = bases['NN']
     # Reading Snp information file. Delimiter = TAB. rsID<TAB>chr<TAB>pos
     with open(snpInfoFile) as snpInfoHandle:
         markerInfo = defaultdict(dict)
@@ -175,6 +213,29 @@ if task == "LGC2HMP":
 
     # Calling the method to write output Hapmap file
     writeHMP(outHmpFile, lgcDataMG, markerInfo)
+
+    # Opening Parent Info file and making a dictionary of dict[F1] = listOf(pA, pB)
+    with open(parentInfoFile) as parentInfoHandle:
+        fOneInfo = defaultdict(dict)
+        for line in parentInfoHandle:
+            line = line.rstrip()
+            lineEntries = line.split(TAB)
+            fOneInfo[lineEntries[0]] = [lineEntries[1],lineEntries[2]]
+
+    polyMorphic = defaultdict(dict)
+    for fOne in fOneInfo:
+        parentA = fOneInfo[fOne][0]
+        parentB = fOneInfo[fOne][1]
+        if not lgcDataGM[parentA]:
+            print("Parent: " + parentA + " Data Missing")
+        if not lgcDataGM[parentB]:
+            print("Parent: " + parentB + " Data Missing")
+        if lgcDataGM[parentA] and lgcDataGM[parentB]:
+            # Get list of polymorphic markers between the parents based on LGC data
+            polyMorphic[parentA][parentB] = checkParents(lgcDataMG, parentA, parentB)
+            print(parentA + TAB + parentB + TAB + str(len(polyMorphic[parentA][parentB])) + TAB + CSV.join(polyMorphic[parentA][parentB]))
+        else:
+            print("Skipping F1:" + fOne)
 
 
 
