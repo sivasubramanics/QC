@@ -68,6 +68,8 @@ parser.add_argument("--parent-info", dest="parentInfoFile",
                     metavar="<FILENAME>", help="Parent information file")
 parser.add_argument("--sample-info", dest="sampleInfoFile",
                     metavar="<FILENAME>", help="Sample information file")
+parser.add_argument("--parents-list", dest="parentsListMap",
+                    metavar="<STRING>", help="map of parents list with sample ID")
 parser.add_argument("--out", dest="outPrefix",
                     metavar="<STRING>", help="Output filename prefix")
 parser.add_argument("--cutOff", dest="cutOff",
@@ -625,17 +627,23 @@ if task == "LGC2FLAPJACK":
 
 if task == "CONSENSUS":
     # Look for the mandatory options are parsed/provided.
-    required = "gridFile outPrefix".split(" ")
+    required = "gridFile parentsListMap outPrefix".split(" ")
     for req in required:
         if options.__dict__[req] is None:
             print("Option/Value Missing for", req)
             parser.print_help()
             sys.exit(1)
     gridFile = options.gridFile
+    parentsMapFile = options.parentsListMap
+    with open(parentsMapFile) as pmh:
+        for line in pmh:
+            print(line,"\n")
+
     outFjkGTFile = options.outPrefix + ".genotype"
     outConsensusSummaryFile = options.outPrefix + "_ConsensusSummary.csv"
     outGridFile = options.outPrefix + "_Grid.csv"
     gtDataMG, gtDataGM, markerIDs = readLGCgridFile(gridFile)
+
     consensusGM, consensusMG = processReplicates(gtDataMG, outConsensusSummaryFile)
     writeFJGT(outFjkGTFile, consensusGM, markerIDs)
     writeGridFile(outGridFile, consensusGM, markerIDs)
