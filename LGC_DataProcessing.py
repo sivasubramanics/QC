@@ -215,10 +215,12 @@ def readMapFile(inFile):
     print("LOG: Processed " + str(lineNo - 1) + " entries from file " + inFile + " .!")
     return mapDict, mapList
 
-def next_key(test_dict, current_key):
-    temp = list(test_dict)
+def next_key(tmpList, current_key):
+    # temp = list(test_dict)
     try:
-        res = temp[temp.index(current_key) + 1]
+        res = tmpList[tmpList.index(current_key) + 1]
+        if res == 'N':
+            next_key(tmpList, res)
     except (ValueError, IndexError):
         res = None
     return res
@@ -233,17 +235,19 @@ def sort_dict(unsorted_dict):
                 break
     return sorted_dict
 
-def getConsensusCalls(parentList, parentMap, markerIDs, gtData, outFile):
+def getConsensusCalls(parentList, parentMap, markerIDs, gtData, outFile, task):
     outFileHandle = open(outFile, 'w')
     outFileHandle.write("parent" + GRIDSEP + "noReps" + GRIDSEP + "noMarkers" + GRIDSEP + "allNs" + GRIDSEP + "noMajorCalls" + GRIDSEP + "noMinorCalls")
     outFileHandle.write(NEWLINE)
     for parentID in parentMap:
-        if parentID not in parentList:
-            continue
+        if task == "F1CHECK":
+            if parentID not in parentList:
+                continue
         consensusBase = []
         count = [0,0,0]
         for markerNum in range(0, len(markerIDs)):
-            baseCount = init_baseCount()
+            # baseCount = init_baseCount()
+            baseCount = defaultdict(list)
             countNs = 0
             for sampleID in parentMap[parentID]:
                 if sampleID not in gtData:
@@ -252,22 +256,28 @@ def getConsensusCalls(parentList, parentMap, markerIDs, gtData, outFile):
                 if baseCall == 'N':
                     countNs += 1
                 else:
-                    baseCount[baseCall] += 1
-            baseCount = sort_dict(baseCount)
-            # for base in sorted(baseCount, key=baseCount.get, reverse=True):
-            for base in baseCount:
-                if base == 'N':
-                    continue
-                if countNs == len(parentMap[parentID]):
-                    consensusBase.append('N')
-                    count[0] += 1
-                else:
+                    if baseCall in baseCount:
+                        baseCount[baseCall] += 1
+                    else:
+                        baseCount[baseCall] = 1
+            if countNs == len(parentMap[parentID]):
+                consensusBase.append('N')
+                count[0] += 1
+            else:    
+                # baseCount = sort_dict(baseCount)
+                # print(baseCount)
+                sortedBases = sorted(baseCount, key=baseCount.get, reverse=True)
+                # print(sortedBases)
+                # for base in sorted(baseCount, key=baseCount.get, reverse=True):
+                for base in sortedBases:
+                    if base == 'N':
+                        continue
                     if baseCount[base]/(len(parentMap[parentID]) - countNs) > 0.5:
                         consensusBase.append(base)
                         count[1] += 1
                     else:
                         if baseCount[base]/(len(parentMap[parentID]) - countNs) == 0.5:
-                            nextbase = next_key(baseCount, base)
+                            nextbase = next_key(sortedBases, base)
                             if baseCount[base] == baseCount[nextbase]:
                                 consensusBase.append('N')
                                 count[2] += 1
@@ -277,7 +287,7 @@ def getConsensusCalls(parentList, parentMap, markerIDs, gtData, outFile):
                         else:
                             consensusBase.append('N')
                             count[2] += 1
-                break
+                    break
         consensusData[parentID] = consensusBase
         outFileHandle.write(parentID + GRIDSEP + str(len(parentMap[parentID])) + GRIDSEP + str(len(markerIDs)) + GRIDSEP + GRIDSEP.join(map(str, count)))
         outFileHandle.write(NEWLINE)
@@ -391,6 +401,68 @@ def readMetaData(inFile):
     print("LOG: Processed " + str(lineNo - 1) + " entries from file " + inFile + " .!")
     return sampleMap, parentMap, parentInfo, parentList
 
+def readGridCSV(inFile):
+    gtData = defaultdict(list)
+    markerIDs = []
+    with open(inFile) as fh:
+        lineCount = 0
+        markerIDs = []
+        bases = init_bases()
+        for line in fh:
+            line = line.strip()
+            lineCount += 1
+            lineEntries = line.split(GRIDSEP)
+            if lineEntries[0] == "DNA \\ Assay":
+                dataFlag = 1
+                markerIDs = lineEntries[1:]
+                continue
+            if line == "":
+                continue
+            if dataFlag == 0:
+                continue
+            if lineEntries[0] == "NTC":
+                continue
+            for i in range(1, len(lineEntries)):
+                if not lineEntries[i] == "":
+                    lineEntries[i] = bases[lineEntries[i].replace(":", "")]
+                else:
+                    lineEntries[i] = bases['NN']
+            gtData[lineEntries[0]]=lineEntries[1:]
+    return gtData, markerIDs
+
+def readMetaDataFile(gtData, inFile):
+    parentList = []
+    sampleMap = defaultdict(list)
+    parentInfo = defaultdict(list)
+    parentMap = defaultdict(list)
+    with open(inFile) as fh:
+        lineCount = 0
+        for line in fh:
+            line = line.strip()
+            lineCount += 1
+            if lineCount == 1:
+                continue
+            lineEntries = line.split(MAPSEP)
+            # sampleID[0], designation[1], sampleName[2], parentA[3], parentB[4]
+            if lineEntries[0] not in gtData:
+                continue
+            sampleMap[lineEntries[0]] = lineEntries[2]
+            parentMap[lineEntries[1]].append(lineEntries[2])
+            if len(lineEntries) == 5:
+                parentInfo[lineEntries[2]] = [lineEntries[3], lineEntries[4]]
+                parentList.append(lineEntries[3])
+                parentList.append(lineEntries[4])
+    return sampleMap, parentMap, parentInfo, parentList
+
+def updateGTdata(gtData, sampleMap):
+    updatedGTdata = defaultdict(list)
+    for sampleID in sampleMap:
+        if sampleID in gtData:
+            updatedGTdata[sampleMap[sampleID]] = gtData[sampleID]
+        else:
+            print("No entry for " + sampleID + " in metaData. Skipping..!")
+    return updatedGTdata
+
 parser = argparse.ArgumentParser(description="QC pipeline: Processes the LGC file for tasks involved in purity check")
 parser.add_argument("--task", dest="task", type=str,
                     metavar="<STRING>",
@@ -434,13 +506,13 @@ if task == "F1CHECK":
     if cutOff is None:
             cutOff = 100
 
-    # sampleMap = readMapFile("sampleMap")
-    # parentMap = readMapFile("parentMap")
-    # parentInfo = readParentInfo("parentInfo")
-    # outPrefix = "1904"
-    sampleMap, parentMap, parentInfo, parentList = readMetaData(metaDataFile)
-    markerIDs, gtData = readGridFile(gridFile, sampleMap)
-    consensusData = getConsensusCalls(parentList, parentMap, markerIDs, gtData, outPrefix + "_" + "ConsensusSummary.csv")
+    gtData, markerIDs = readGridCSV(gridFile)
+    sampleMap, parentMap, parentInfo, parentList = readMetaDataFile(gtData, metaDataFile)
+    # sampleMap, sampleList = readMapFile(sampleMapFile)
+    # parentMap, parentList = readMapFile(parentMapFile)
+    # markerIDs, gtData = readGridFile(gridFile, sampleMap)
+    gtData = updateGTdata(gtData, sampleMap)
+    consensusData = getConsensusCalls(parentList, parentMap, markerIDs, gtData, outPrefix + "_" + "ConsensusSummary.csv", task)
     processedData = {**gtData, **consensusData}
 
     for parent in consensusData:
@@ -457,7 +529,7 @@ if task == "F1CHECK":
     pedigreeVerification(outPrefix + "_" + "F1summary.csv", parentInfo, processedData, markerIDs, cutOff)
 
 if task == "CONSENSUS":
-    required = "gridFile sampleMap parentMap outPrefix".split(SPACE)
+    required = "gridFile metaDataFile outPrefix".split(SPACE)
     for req in required:
         if options.__dict__[req] is None:
             print("Option/Value Missing for", req)
@@ -466,13 +538,17 @@ if task == "CONSENSUS":
     
     gridFile = options.gridFile
     outPrefix = options.outPrefix
-    sampleMapFile = options.sampleMap
-    parentMapFile = options.parentMap
+    metaDataFile = options.metaDataFile
+    # sampleMapFile = options.sampleMap
+    # parentMapFile = options.parentMap
 
-    sampleMap, sampleList = readMapFile(sampleMapFile)
-    parentMap, parentList = readMapFile(parentMapFile)
-    markerIDs, gtData = readGridFile(gridFile, sampleMap)
-    consensusData = getConsensusCalls(parentList, parentMap, markerIDs, gtData, outPrefix + "_" + "ConsensusSummary.csv")
+    gtData, markerIDs = readGridCSV(gridFile)
+    sampleMap, parentMap, parentInfo, parentList = readMetaDataFile(gtData, metaDataFile)
+    # sampleMap, sampleList = readMapFile(sampleMapFile)
+    # parentMap, parentList = readMapFile(parentMapFile)
+    # markerIDs, gtData = readGridFile(gridFile, sampleMap)
+    gtData = updateGTdata(gtData, sampleMap)
+    consensusData = getConsensusCalls(parentList, parentMap, markerIDs, gtData, outPrefix + "_" + "ConsensusSummary.csv", task)
     processedData = {**gtData, **consensusData}
 
     for parent in consensusData:
@@ -495,6 +571,6 @@ if task == "GETSTATS":
         sys.exit(1)
     
     gridFile = options.gridFile
-    markerIDs, gtData = readGridFile(gridFile)
+    gtData, markerIDs = readGridCSV(gridFile)
     print("Number of Markers: ", len(markerIDs))
     print("Number of samples:", len(gtData.keys()))
